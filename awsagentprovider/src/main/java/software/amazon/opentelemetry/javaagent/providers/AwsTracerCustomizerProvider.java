@@ -23,6 +23,7 @@ import io.opentelemetry.contrib.awsxray.AwsSpanMetricsProcessorBuilder;
 import io.opentelemetry.contrib.awsxray.AwsXrayIdGenerator;
 import io.opentelemetry.contrib.awsxray.ResourceHolder;
 import io.opentelemetry.exporter.otlp.metrics.OtlpGrpcMetricExporter;
+import io.opentelemetry.exporter.otlp.metrics.OtlpGrpcMetricExporterBuilder;
 import io.opentelemetry.sdk.autoconfigure.spi.AutoConfigurationCustomizer;
 import io.opentelemetry.sdk.autoconfigure.spi.AutoConfigurationCustomizerProvider;
 import io.opentelemetry.sdk.autoconfigure.spi.ConfigProperties;
@@ -83,7 +84,7 @@ public class AwsTracerCustomizerProvider implements AutoConfigurationCustomizerP
           AttributePropagatingSpanProcessorBuilder.create().build());
       logger.log(Level.SEVERE, "configure meterProvider");
       // Construct meterProvider
-      MetricExporter metricsExporter =
+      OtlpGrpcMetricExporterBuilder metricExporterBuilder =
           OtlpGrpcMetricExporter.builder()
               .setDefaultAggregationSelector(
                   instrumentType -> {
@@ -92,8 +93,14 @@ public class AwsTracerCustomizerProvider implements AutoConfigurationCustomizerP
                     }
                     return Aggregation.defaultAggregation();
                   })
-              .setAggregationTemporalitySelector(AggregationTemporalitySelector.deltaPreferred())
-              .build();
+              .setAggregationTemporalitySelector(AggregationTemporalitySelector.deltaPreferred());
+      // OtlpGrpcMetricExporter.builder() always uses the default endpoint, so we have to override
+      // it here
+      String endpoint = configProps.getString("otel.exporter.otlp.endpoint");
+      if (endpoint != null) {
+        metricExporterBuilder = metricExporterBuilder.setEndpoint(endpoint);
+      }
+      MetricExporter metricsExporter = metricExporterBuilder.build();
       MetricReader metricReader =
           PeriodicMetricReader.builder(metricsExporter).setInterval(Duration.ofSeconds(60)).build();
       MeterProvider meterProvider =
